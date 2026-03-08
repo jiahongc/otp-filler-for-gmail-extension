@@ -192,7 +192,6 @@ function renderAccountsList(accounts) {
     row.className = "account-row";
     row.innerHTML = `
       <div class="account-info">
-        <div class="account-name">${escHtml(acct.name)}</div>
         <div class="account-email">${escHtml(acct.email)}</div>
       </div>
       <button class="remove-btn" title="Remove account">&times;</button>
