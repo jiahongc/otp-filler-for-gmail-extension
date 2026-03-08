@@ -277,20 +277,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === "FILL_CODE") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       if (!tabs[0]) return sendResponse({ ok: false, error: "No active tab" });
       const tabId = tabs[0].id;
-      chrome.tabs.sendMessage(tabId, { type: "FILL_OTP", code: msg.code }, async (res) => {
-        if (res && !chrome.runtime.lastError) return sendResponse(res);
-        try {
-          await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
-          chrome.tabs.sendMessage(tabId, { type: "FILL_OTP", code: msg.code }, (res2) =>
-            sendResponse(res2 || { ok: false, error: "No OTP field found on this page." })
-          );
-        } catch {
-          sendResponse({ ok: false, error: "Can't access this page. Try refreshing it first." });
-        }
-      });
+      try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+        chrome.tabs.sendMessage(tabId, { type: "FILL_OTP", code: msg.code }, (res) =>
+          sendResponse(res || { ok: false, error: "No OTP field found on this page." })
+        );
+      } catch {
+        sendResponse({ ok: false, error: "Can't access this page. Try refreshing it first." });
+      }
     });
     return true;
   }

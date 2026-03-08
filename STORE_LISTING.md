@@ -2,7 +2,7 @@
 
 ## Name
 
-Gmail OTP Filler
+OTP Filler for Gmail
 
 ## Short Description (132 char max)
 
@@ -10,7 +10,7 @@ Automatically extracts verification codes from your Gmail and fills them into we
 
 ## Detailed Description
 
-Stop switching tabs to copy verification codes. Gmail OTP Filler reads your recent emails, finds OTP and verification codes, and fills them directly into the page you're on.
+Stop switching tabs to copy verification codes. OTP Filler for Gmail reads your recent emails, finds OTP and verification codes, and fills them directly into the page you're on.
 
 **How it works:**
 1. Click the extension icon
@@ -37,6 +37,11 @@ Stop switching tabs to copy verification codes. Gmail OTP Filler reads your rece
 - Tokens are stored locally in your browser
 - No analytics or tracking
 - Open source: https://github.com/jiahongc/gmail-otp-filler
+- Privacy policy: https://jiahongc.github.io/gmail-otp-filler/privacy-policy
+
+## Privacy Policy URL (required field in store)
+
+https://jiahongc.github.io/gmail-otp-filler/privacy-policy
 
 ## Category
 
@@ -62,8 +67,8 @@ This extension reads recent Gmail messages to extract one-time verification code
 |---|---|
 | `identity` | Required to authenticate with Google OAuth and obtain an access token for the Gmail API. |
 | `storage` | Required to store linked Gmail account information and access tokens locally. |
-| `activeTab` | Required to inject the OTP code into the input field on the user's current tab when they click "Fill & Submit". |
-| `scripting` | Required to inject the content script into the active tab if it is not already loaded, so the code can be filled into the page. |
+| `activeTab` | Required to access the user's current tab when they click "Fill & Submit" so the verification code can be filled into the page. |
+| `scripting` | Required to inject the content script on-demand into the active tab (only when the user clicks "Fill & Submit") to locate and fill the OTP input field. No scripts run on pages unless the user explicitly triggers it. |
 
 ### Data Usage Disclosure
 

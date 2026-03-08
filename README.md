@@ -1,22 +1,23 @@
-# Gmail OTP Filler
+# OTP Filler for Gmail
 
 Chrome extension that automatically extracts verification codes from your Gmail and fills them into web forms with one click.
 
 ## Features
 
 - **Multi-account** — Add multiple Gmail accounts and switch between them
-- **Auto-detect OTPs** — Scans recent emails for numeric and alphanumeric verification codes
+- **Auto-detect OTPs** — Scans recent emails for numeric, alphanumeric, and hyphenated verification codes
 - **Auto-copy** — Copies the latest code to your clipboard when you open the popup
 - **Auto-fill & submit** — Fills the code into the page's OTP field and clicks the submit button
 - **Smart detection** — Finds OTP input fields using W3C standards, name/placeholder heuristics, and nearby label text
 - **Works with frameworks** — Compatible with React, Vue, Angular, and other controlled input frameworks
+- **On-demand only** — Content script is injected only when you click "Fill & Submit", not on every page
 
 ## Setup
 
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/gmail-otp-filler.git
+git clone https://github.com/jiahongc/gmail-otp-filler.git
 ```
 
 ### 2. Load the extension
@@ -78,14 +79,14 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 | Component | Role |
 |-----------|------|
 | `background.js` | Service worker — manages multi-account OAuth, fetches recent emails via Gmail API, extracts OTP codes |
-| `content.js` | Injected into pages — detects OTP input fields, fills values, and auto-clicks submit buttons |
+| `content.js` | Injected on-demand into the active tab — detects OTP input fields, fills values, and auto-clicks submit buttons |
 | `popup.html/js/css` | Extension popup — account management, code display, copy/fill actions |
 
 ### OTP detection
 
 - Scans the last 10 emails from the past 10 minutes (across all added accounts)
 - Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`
-- Extracts 4-10 character codes (numeric and alphanumeric) anchored to keywords
+- Extracts 4-10 character codes (numeric, alphanumeric, and hyphenated) anchored to keywords
 
 ### Field detection
 
@@ -104,10 +105,13 @@ After filling the code, the extension looks for nearby submit/verify/confirm but
 | `identity` | OAuth sign-in via `launchWebAuthFlow` |
 | `gmail.readonly` | Read emails to extract verification codes |
 | `storage` | Store account tokens locally |
-| `activeTab` + `scripting` | Fill OTP fields in the current tab |
-| `alarms` | Periodic background check for new codes |
+| `activeTab` + `scripting` | Inject content script and fill OTP fields in the current tab (on-demand only) |
 
 The extension **never sends** your emails or tokens to any external server. All processing happens locally.
+
+## Privacy
+
+See [Privacy Policy](privacy-policy.md).
 
 ## Other Chromium browsers
 

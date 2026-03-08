@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gmail OTP Filler",
+  "name": "OTP Filler for Gmail",
   "version": "1.0.0",
   "description": "Automatically extracts verification codes from Gmail and fills them into web forms.",
 
@@ -8,30 +8,20 @@
     "identity",
     "storage",
     "activeTab",
-    "scripting",
-    "alarms"
+    "scripting"
   ],
 
   "host_permissions": [
-    "https://www.googleapis.com/*",
-    "https://mail.google.com/*"
+    "https://www.googleapis.com/*"
   ],
 
   "background": {
     "service_worker": "background.js"
   },
 
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
-
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Gmail OTP Filler",
+    "default_title": "OTP Filler for Gmail",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
