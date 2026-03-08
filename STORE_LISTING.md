@@ -36,7 +36,7 @@ Stop switching tabs to copy verification codes. OTP Filler for Gmail reads your 
 - No data is sent to any third-party server
 - Tokens are stored locally in your browser
 - No analytics or tracking
-- Open source: https://github.com/jiahongc/gmail-otp-filler
+- Open source: https://github.com/jiahongc/otp-filler-for-gmail-extension
 - Privacy policy: https://jiahongc.github.io/gmail-otp-filler/privacy-policy
 
 ## Privacy Policy URL (required field in store)

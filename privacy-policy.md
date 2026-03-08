@@ -48,4 +48,4 @@ If this policy is updated, the changes will be posted here with a revised date.
 ## Contact
 
 If you have questions about this privacy policy, please open an issue at:
-https://github.com/jiahongc/gmail-otp-filler/issues
+https://github.com/jiahongc/otp-filler-for-gmail-extension/issues

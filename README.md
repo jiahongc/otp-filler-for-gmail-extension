@@ -17,7 +17,7 @@ Chrome extension that automatically extracts verification codes from your Gmail 
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/jiahongc/gmail-otp-filler.git
+git clone https://github.com/jiahongc/otp-filler-for-gmail-extension.git
 ```
 
 ### 2. Load the extension
