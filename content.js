@@ -34,13 +34,20 @@ function findOTPField() {
 
 function isVisible(el) {
   const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).display !== "none";
+  const style = window.getComputedStyle(el);
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0"
+  );
 }
 
 function getNearbyText(input) {
   const id = input.id;
   if (id) {
-    const label = document.querySelector(`label[for="${id}"]`);
+    const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
     if (label) return label.textContent;
   }
   return (

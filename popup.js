@@ -162,12 +162,16 @@ function renderCodes(codes, accounts, shouldAutoCopy = false) {
 
     card.querySelector(".copy-btn").addEventListener("click", async (e) => {
       e.stopPropagation();
-      await navigator.clipboard.writeText(item.code);
-      const btn = e.currentTarget;
-      btn.textContent = "\u2713";
-      btn.classList.add("copied");
-      setStatus(`Copied ${item.code}`, "success");
-      setTimeout(() => { btn.innerHTML = "&#x29C9;"; btn.classList.remove("copied"); }, 1500);
+      try {
+        await navigator.clipboard.writeText(item.code);
+        const btn = e.currentTarget;
+        btn.textContent = "\u2713";
+        btn.classList.add("copied");
+        setStatus(`Copied ${item.code}`, "success");
+        setTimeout(() => { btn.innerHTML = "&#x29C9;"; btn.classList.remove("copied"); }, 1500);
+      } catch {
+        setStatus("Clipboard access denied.", "error");
+      }
     });
 
     codesList.appendChild(card);
@@ -297,16 +301,12 @@ addFirstBtn.addEventListener("click", async () => {
 
 // Add account from header
 addBtn.addEventListener("click", async () => {
-  addBtn.disabled = true;
-  const res = await send("ADD_ACCOUNT");
-  addBtn.disabled = false;
-  if (res?.ok) {
+  const ok = await addAccount(addBtn);
+  if (ok) {
     const acctRes = await send("GET_ACCOUNTS");
     cachedAccounts = acctRes?.accounts || [];
     renderChips(cachedAccounts);
     await doFetch();
-  } else {
-    setStatus(res?.error || "Failed to add account.", "error");
   }
 });
 
@@ -322,12 +322,11 @@ fillBtn.addEventListener("click", async () => {
   fillBtn.disabled = true;
   setStatus("Filling & submitting\u2026");
   const res = await send("FILL_CODE", { code: currentCode });
+  fillBtn.disabled = false;
   if (res?.ok) {
     setStatus("Done!", "success");
-    chrome.action.setBadgeText({ text: "" });
   } else {
     setStatus(res?.error || "Could not fill the field.", "error");
-    fillBtn.disabled = false;
   }
 });
 

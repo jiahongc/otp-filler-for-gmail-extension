@@ -14,17 +14,17 @@ function getClientId() {
 // Space is NOT used as a separator — too ambiguous in natural language sentences.
 const OTP_PATTERNS = [
   // keyword BEFORE contiguous code (e.g. "Your code: 761283", "PIN: 1234", "password: ABC123")
-  /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Z0-9]{4,10})\b/g,
+  /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Za-z0-9]{4,10})\b/gi,
   /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^\d]{0,5}(\d{4,8})\b/gi,
   // keyword BEFORE hyphenated code (e.g. "code: 123-ABC", "PIN: 761-283")
   /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // "is <code>" — contiguous or hyphenated (e.g. "Your code is 761283", "code is 123-ABC")
-  /\bis\s+([A-Z0-9]{4,10})\b/g,
+  /\bis\s+([A-Za-z0-9]{4,10})\b/gi,
   /\bis\s+(\d{4,8})\b/gi,
   /\bis\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // code BEFORE keyword within 80 chars (e.g. "761283\nPlease enter the above one-time password")
   /\b(\d{4,8})\b(?=[^\d]{0,80}(?:password|one.?time|passcode|otp|\bcode\b|verify|2fa|two.?factor|\bpin\b))/gi,
-  /\b([A-Z0-9]{4,10})\b(?=[^A-Z0-9]{0,80}(?:one.?time|passcode|otp|\bcode\b|verify|2fa|two.?factor|\bpin\b))/g,
+  /\b([A-Za-z0-9]{4,10})\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\bcode\b|verify|2fa|two.?factor|\bpin\b))/gi,
   // hyphenated code BEFORE keyword (e.g. "123-ABC — please use this one-time code")
   /\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b(?=[^A-Z0-9]{0,80}(?:password|one.?time|passcode|otp|\bcode\b|verify|2fa|\bpin\b))/gi,
 ];
@@ -195,29 +195,31 @@ async function fetchOTPsForAccount(token, accountEmail) {
   const q = `after:${tenMinAgo}`;
   const data = await gmailFetch(`/users/me/messages?maxResults=${MAX_EMAILS_TO_SCAN}&q=${encodeURIComponent(q)}`, token);
   const messages = data.messages || [];
-  const codes = [];
 
-  for (const { id } of messages) {
-    const msg = await gmailFetch(`/users/me/messages/${id}?format=full`, token);
-    const subject = msg.payload.headers?.find((h) => h.name === "Subject")?.value || "";
-    const from = msg.payload.headers?.find((h) => h.name === "From")?.value || "";
-    const body = extractTextFromPayload(msg.payload);
-    const snippet = msg.snippet || "";
+  const results = await Promise.all(
+    messages.map(async ({ id }) => {
+      const msg = await gmailFetch(`/users/me/messages/${id}?format=full`, token);
+      const subject = msg.payload.headers?.find((h) => h.name === "Subject")?.value || "";
+      const from = msg.payload.headers?.find((h) => h.name === "From")?.value || "";
+      const body = extractTextFromPayload(msg.payload);
+      const snippet = msg.snippet || "";
 
-    if (!looksLikeOTPEmail(subject, snippet)) continue;
-    const otp = extractOTP(subject + " " + snippet + " " + body);
-    if (otp) {
+      if (!looksLikeOTPEmail(subject, snippet)) return null;
+      const otp = extractOTP(subject + " " + snippet + " " + body);
+      if (!otp) return null;
+
       const { name, email } = parseSender(from);
-      codes.push({
+      return {
         code: otp,
         senderName: name,
         senderEmail: email,
         accountEmail,
         timestamp: parseInt(msg.internalDate, 10),
-      });
-    }
-  }
-  return codes;
+      };
+    })
+  );
+
+  return results.filter(Boolean);
 }
 
 async function fetchAllOTPs(filterEmail = null) {
@@ -225,17 +227,19 @@ async function fetchAllOTPs(filterEmail = null) {
   if (accounts.length === 0) throw new Error("no_accounts");
 
   const toFetch = filterEmail ? accounts.filter((a) => a.email === filterEmail) : accounts;
-  const allCodes = [];
 
-  for (const acct of toFetch) {
-    try {
+  const settled = await Promise.allSettled(
+    toFetch.map(async (acct) => {
       const token = await getValidToken(acct);
-      const codes = await fetchOTPsForAccount(token, acct.email);
-      allCodes.push(...codes);
-    } catch (err) {
-      console.warn(`[OTP] ${acct.email}: ${err.message}`);
-    }
-  }
+      return fetchOTPsForAccount(token, acct.email);
+    })
+  );
+
+  const allCodes = [];
+  settled.forEach((result, i) => {
+    if (result.status === "fulfilled") allCodes.push(...result.value);
+    else console.warn(`[OTP] ${toFetch[i].email}: ${result.reason?.message}`);
+  });
 
   allCodes.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   return allCodes;
@@ -292,14 +296,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-// ── Alarm ─────────────────────────────────────────────────────────────────────
 
-chrome.alarms.create("otpCheck", { periodInMinutes: 1 });
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== "otpCheck") return;
-  const codes = await fetchAllOTPs().catch(() => []);
-  if (codes.length > 0) {
-    chrome.action.setBadgeText({ text: String(codes.length) });
-    chrome.action.setBadgeBackgroundColor({ color: "#4CAF50" });
-  }
-});
