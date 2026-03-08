@@ -19,7 +19,7 @@ const OTP_PATTERNS = [
   // keyword BEFORE hyphenated code (e.g. "code: 123-ABC", "PIN: 761-283")
   /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // "is <code>" — contiguous or hyphenated (e.g. "Your code is 761283", "code is 123-ABC")
-  /\bis\s+([A-Za-z0-9]{4,10})\b/gi,
+  /\bis\s+((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,10})\b/gi,
   /\bis\s+(\d{4,8})\b/gi,
   /\bis\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // code BEFORE keyword within 80 chars (e.g. "761283\nPlease enter the above one-time password")
@@ -176,7 +176,7 @@ function extractOTP(text) {
 }
 
 function looksLikeOTPEmail(subject, snippet) {
-  return /verif|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor/i.test(subject + " " + snippet);
+  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor/i.test(subject + " " + snippet);
 }
 
 function parseSender(from) {
