@@ -29,6 +29,29 @@ const OTP_PATTERNS = [
   /\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b(?=[^A-Z0-9]{0,80}(?:password|one.?time|passcode|otp|\bcode\b|verify|2fa|\bpin\b))/gi,
 ];
 
+const OTP_STOPWORDS = new Set([
+  "account",
+  "below",
+  "click",
+  "code",
+  "enter",
+  "expire",
+  "expires",
+  "login",
+  "minutes",
+  "number",
+  "password",
+  "reset",
+  "secure",
+  "this",
+  "time",
+  "token",
+  "use",
+  "verify",
+  "will",
+  "your",
+]);
+
 // ── Account storage ───────────────────────────────────────────────────────────
 
 async function getAccounts() {
@@ -163,16 +186,55 @@ function extractTextFromPayload(payload) {
   return texts.join(" ");
 }
 
+function normalizeOTP(candidate) {
+  return candidate?.replace(/[-\s]/g, "").trim() || "";
+}
+
+function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
+  if (!candidate || candidate.length < 4 || candidate.length > 10) return -1;
+
+  const lower = candidate.toLowerCase();
+  if (OTP_STOPWORDS.has(lower)) return -1;
+
+  if (/^[a-z]{4,10}$/.test(candidate)) return -1;
+
+  let score = 0;
+
+  if (/^\d{6}$/.test(candidate)) score += 140;
+  else if (/^\d{4,8}$/.test(candidate)) score += 125;
+  else if (/^(?=.*\d)[A-Z0-9]{4,10}$/.test(candidate)) score += 110;
+  else if (/^(?=.*\d)[A-Za-z0-9]{4,10}$/.test(candidate)) score += 100;
+  else if (/^[A-Z]{4,10}$/.test(candidate)) score += 60;
+  else if (/^[A-Za-z]{4,10}$/.test(candidate)) score += 20;
+  else return -1;
+
+  if (candidate.length === 6) score += 10;
+  if (/\d/.test(candidate)) score += 15;
+  if (/^[A-Z0-9]+$/.test(candidate)) score += 5;
+
+  score -= patternIndex;
+  score -= matchIndex / 1000;
+
+  return score;
+}
+
 function extractOTP(text) {
-  for (const pattern of OTP_PATTERNS) {
+  let best = null;
+
+  for (const [patternIndex, pattern] of OTP_PATTERNS.entries()) {
     const matches = [...text.matchAll(pattern)];
-    if (matches.length > 0) {
-      const cleaned = matches.map((m) => m[1]?.replace(/[-\s]/g, ""));
-      const sixChar = cleaned.find((c) => c?.length === 6);
-      return sixChar ?? cleaned[0];
+    for (const match of matches) {
+      const candidate = normalizeOTP(match[1]);
+      const score = scoreOTPCandidate(candidate, patternIndex, match.index ?? Number.MAX_SAFE_INTEGER);
+      if (score < 0) continue;
+
+      if (!best || score > best.score) {
+        best = { candidate, score };
+      }
     }
   }
-  return null;
+
+  return best?.candidate || null;
 }
 
 function looksLikeOTPEmail(subject, snippet) {
@@ -247,50 +309,58 @@ async function fetchAllOTPs(filterEmail = null) {
 
 // ── Message handling ──────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "GET_ACCOUNTS") {
-    getAccounts().then((accounts) =>
-      sendResponse({ ok: true, accounts: accounts.map((a) => ({ email: a.email, name: a.name })) })
-    );
-    return true;
-  }
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg.type === "GET_ACCOUNTS") {
+      getAccounts().then((accounts) =>
+        sendResponse({ ok: true, accounts: accounts.map((a) => ({ email: a.email, name: a.name })) })
+      );
+      return true;
+    }
 
-  if (msg.type === "ADD_ACCOUNT") {
-    addAccount()
-      .then((acct) => sendResponse({ ok: true, account: { email: acct.email, name: acct.name } }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
+    if (msg.type === "ADD_ACCOUNT") {
+      addAccount()
+        .then((acct) => sendResponse({ ok: true, account: { email: acct.email, name: acct.name } }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
 
-  if (msg.type === "REMOVE_ACCOUNT") {
-    removeAccount(msg.email)
-      .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
+    if (msg.type === "REMOVE_ACCOUNT") {
+      removeAccount(msg.email)
+        .then(() => sendResponse({ ok: true }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
 
-  if (msg.type === "GET_OTP") {
-    fetchAllOTPs(msg.filterEmail || null)
-      .then((codes) => sendResponse({ ok: true, codes }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
+    if (msg.type === "GET_OTP") {
+      fetchAllOTPs(msg.filterEmail || null)
+        .then((codes) => sendResponse({ ok: true, codes }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+    }
 
-  if (msg.type === "FILL_CODE") {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      if (!tabs[0]) return sendResponse({ ok: false, error: "No active tab" });
-      const tabId = tabs[0].id;
-      try {
-        await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
-        chrome.tabs.sendMessage(tabId, { type: "FILL_OTP", code: msg.code }, (res) =>
-          sendResponse(res || { ok: false, error: "No OTP field found on this page." })
-        );
-      } catch {
-        sendResponse({ ok: false, error: "Can't access this page. Try refreshing it first." });
-      }
-    });
-    return true;
-  }
-});
+    if (msg.type === "FILL_CODE") {
+      chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        if (!tabs[0]) return sendResponse({ ok: false, error: "No active tab" });
+        const tabId = tabs[0].id;
+        try {
+          await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+          chrome.tabs.sendMessage(tabId, { type: "FILL_OTP", code: msg.code }, (res) =>
+            sendResponse(res || { ok: false, error: "No OTP field found on this page." })
+          );
+        } catch {
+          sendResponse({ ok: false, error: "Can't access this page. Try refreshing it first." });
+        }
+      });
+      return true;
+    }
+  });
+}
 
-
+if (typeof module !== "undefined") {
+  module.exports = {
+    extractOTP,
+    normalizeOTP,
+    scoreOTPCandidate,
+  };
+}
