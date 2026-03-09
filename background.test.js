@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { extractOTP } = require("./background.js");
+const { extractOTP, looksLikeOTPEmail } = require("./background.js");
 
 test("extracts the numeric code from Garmin-style email copy", () => {
   const text = `
@@ -29,4 +29,13 @@ test("extracts a hyphenated code and normalizes it", () => {
 
 test("ignores lowercase prose after code-related words", () => {
   assert.equal(extractOTP("This code will expire shortly"), null);
+});
+
+test("prefilter accepts access-code emails even with generic subject lines", () => {
+  const subject = "You've got a package.";
+  const snippet = "";
+  const body = "ENTER ACCESS CODE 414384 OR SCAN QR CODE";
+
+  assert.equal(looksLikeOTPEmail(subject, snippet, body), true);
+  assert.equal(extractOTP(body), "414384");
 });

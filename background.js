@@ -237,8 +237,10 @@ function extractOTP(text) {
   return best?.candidate || null;
 }
 
-function looksLikeOTPEmail(subject, snippet) {
-  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor/i.test(subject + " " + snippet);
+function looksLikeOTPEmail(subject, snippet, body = "") {
+  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor|access/i.test(
+    `${subject} ${snippet} ${body}`
+  );
 }
 
 function parseSender(from) {
@@ -266,7 +268,7 @@ async function fetchOTPsForAccount(token, accountEmail) {
       const body = extractTextFromPayload(msg.payload);
       const snippet = msg.snippet || "";
 
-      if (!looksLikeOTPEmail(subject, snippet)) return null;
+      if (!looksLikeOTPEmail(subject, snippet, body)) return null;
       const otp = extractOTP(subject + " " + snippet + " " + body);
       if (!otp) return null;
 
@@ -360,6 +362,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 if (typeof module !== "undefined") {
   module.exports = {
     extractOTP,
+    looksLikeOTPEmail,
     normalizeOTP,
     scoreOTPCandidate,
   };
