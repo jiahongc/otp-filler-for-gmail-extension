@@ -205,7 +205,7 @@ function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
   else if (/^(?=.*\d)[A-Z0-9]{4,10}$/.test(candidate)) score += 110;
   else if (/^(?=.*\d)[A-Za-z0-9]{4,10}$/.test(candidate)) score += 100;
   else if (/^[A-Z]{4,10}$/.test(candidate)) score += 60;
-  else if (/^[A-Za-z]{4,10}$/.test(candidate)) score += 20;
+  else if (/^[A-Za-z]{4,10}$/.test(candidate)) return -1; // mixed-case letters = natural language, not OTP
   else return -1;
 
   if (candidate.length === 6) score += 10;
@@ -219,6 +219,11 @@ function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
 }
 
 function extractOTP(text) {
+  // Collapse sequences of 4+ space-separated single digits back into contiguous
+  // numbers. HTML emails that style each digit in its own <span>/<td> produce
+  // "3 2 9 8 5 5" after tag-stripping, which no OTP pattern can match.
+  text = text.replace(/\b(\d\s+){3,}\d\b/g, (m) => m.replace(/\s+/g, ""));
+
   let best = null;
 
   for (const [patternIndex, pattern] of OTP_PATTERNS.entries()) {

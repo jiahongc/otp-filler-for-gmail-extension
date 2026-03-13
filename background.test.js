@@ -31,6 +31,23 @@ test("ignores lowercase prose after code-related words", () => {
   assert.equal(extractOTP("This code will expire shortly"), null);
 });
 
+test("extracts code when HTML wraps each digit in its own element", () => {
+  // After stripHtml, per-digit <span>/<td> tags produce space-separated digits
+  assert.equal(
+    extractOTP("Please enter this secure verification code: 3 2 9 8 5 5"),
+    "329855"
+  );
+});
+
+test("does not extract mixed-case words near keywords in email footers", () => {
+  // Uber "new device sign-in" footer: "Want? Verify your account"
+  assert.equal(extractOTP("Want? Verify your account"), null);
+  assert.equal(
+    extractOTP("New device log-in It looks like a new device was used to log in. Want? Verify your account settings."),
+    null
+  );
+});
+
 test("prefilter accepts access-code emails even with generic subject lines", () => {
   const subject = "You've got a package.";
   const snippet = "";
