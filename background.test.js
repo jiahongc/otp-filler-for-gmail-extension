@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { extractOTP, looksLikeOTPEmail } = require("./background.js");
+const { extractOTP, looksLikeOTPEmail, stripHtml } = require("./background.js");
 
 test("extracts the numeric code from Garmin-style email copy", () => {
   const text = `
@@ -53,6 +53,21 @@ test("extracts code when zero-width chars are injected between digits", () => {
   const cgj = "\u034F";
   const text = `Enter this code to sign in: 0${cgj}5${cgj}6${cgj}9${cgj}3${cgj}0 This code will expire in 10 minutes`;
   assert.equal(extractOTP(text), "056930");
+});
+
+test("extracts code when soft hyphens are injected between digits", () => {
+  const shy = "\u00AD";
+  assert.equal(extractOTP(`Your code: 0${shy}5${shy}6${shy}9${shy}3${shy}0`), "056930");
+});
+
+test("extracts code when digits are HTML-entity-encoded", () => {
+  // &#48;=0 &#53;=5 &#54;=6 &#57;=9 &#51;=3 &#48;=0
+  const html = "<p>Your code: &#48;&#53;&#54;&#57;&#51;&#48;</p>";
+  assert.equal(extractOTP(stripHtml(html)), "056930");
+
+  // Hex entities: &#x30;=0 &#x35;=5 &#x36;=6 &#x39;=9 &#x33;=3 &#x30;=0
+  const hexHtml = "<p>Your code: &#x30;&#x35;&#x36;&#x39;&#x33;&#x30;</p>";
+  assert.equal(extractOTP(stripHtml(hexHtml)), "056930");
 });
 
 test("prefilter accepts access-code emails even with generic subject lines", () => {

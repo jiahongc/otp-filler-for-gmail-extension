@@ -172,10 +172,14 @@ function stripHtml(html) {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
-    .replace(/&#?\w+;/g, " ")
+    // Decode numeric HTML entities (&#48; → "0", &#x30; → "0") before the
+    // catch-all entity strip, so entity-encoded digits survive.
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&\w+;/g, " ")
     // Strip zero-width / invisible Unicode chars used by emails to poison snippets
     // and break OTP digit sequences (e.g. 0͏5͏6͏9͏3͏0 → 056930)
-    .replace(/[\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+    .replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
     .replace(/\s+/g, " ").trim();
 }
 
@@ -225,7 +229,7 @@ function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
 function extractOTP(text) {
   // Strip zero-width / invisible Unicode chars that emails inject between digits
   // to poison scrapers (e.g. 0͏5͏6͏9͏3͏0 renders as "056930" but breaks \d+ regex).
-  text = text.replace(/[\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "");
+  text = text.replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "");
 
   // Collapse sequences of 4+ space-separated single digits back into contiguous
   // numbers. HTML emails that style each digit in its own <span>/<td> produce
@@ -378,5 +382,6 @@ if (typeof module !== "undefined") {
     looksLikeOTPEmail,
     normalizeOTP,
     scoreOTPCandidate,
+    stripHtml,
   };
 }
