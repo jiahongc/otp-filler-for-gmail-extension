@@ -48,6 +48,13 @@ test("does not extract mixed-case words near keywords in email footers", () => {
   );
 });
 
+test("extracts code when zero-width chars are injected between digits", () => {
+  // Shop/Shopify emails inject U+034F between digits to poison scrapers
+  const cgj = "\u034F";
+  const text = `Enter this code to sign in: 0${cgj}5${cgj}6${cgj}9${cgj}3${cgj}0 This code will expire in 10 minutes`;
+  assert.equal(extractOTP(text), "056930");
+});
+
 test("prefilter accepts access-code emails even with generic subject lines", () => {
   const subject = "You've got a package.";
   const snippet = "";
