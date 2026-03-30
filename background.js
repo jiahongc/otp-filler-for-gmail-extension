@@ -317,13 +317,18 @@ async function fetchAllOTPs(filterEmail = null) {
   );
 
   const allCodes = [];
+  const errors = [];
   settled.forEach((result, i) => {
     if (result.status === "fulfilled") allCodes.push(...result.value);
-    else console.warn(`[OTP] ${toFetch[i].email}: ${result.reason?.message}`);
+    else {
+      const msg = result.reason?.message || "Unknown error";
+      console.warn(`[OTP] ${toFetch[i].email}: ${msg}`);
+      errors.push({ email: toFetch[i].email, message: msg });
+    }
   });
 
   allCodes.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  return allCodes;
+  return { codes: allCodes, errors };
 }
 
 // ── Message handling ──────────────────────────────────────────────────────────
@@ -353,7 +358,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     if (msg.type === "GET_OTP") {
       fetchAllOTPs(msg.filterEmail || null)
-        .then((codes) => sendResponse({ ok: true, codes }))
+        .then((result) => sendResponse({ ok: true, codes: result.codes, accountErrors: result.errors }))
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     }

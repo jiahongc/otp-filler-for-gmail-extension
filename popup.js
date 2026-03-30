@@ -265,6 +265,16 @@ async function doFetch() {
     renderCodes([], cachedAccounts);
     setStatus("No OTP codes found in the last 10 minutes.");
   }
+
+  // Show account errors (e.g. expired tokens)
+  if (res.accountErrors?.length) {
+    const names = res.accountErrors.map((e) => e.email.split("@")[0]).join(", ");
+    const isExpired = res.accountErrors.some((e) => /expired|re-add/i.test(e.message));
+    const msg = isExpired
+      ? `${names}: token expired — re-add in Manage Accounts`
+      : `${names}: failed to fetch`;
+    setStatus(msg, "error");
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
