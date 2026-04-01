@@ -70,6 +70,67 @@ test("extracts code when digits are HTML-entity-encoded", () => {
   assert.equal(extractOTP(stripHtml(hexHtml)), "056930");
 });
 
+test("extracts code when keyword is far before code but colon anchors it (Lemonade style)", () => {
+  // "one-time password. Use it to log in: 973230"
+  assert.equal(
+    extractOTP("Here's your one-time password. Use it to log in: 973230 If it wasn't you trying to log in, just ignore this email."),
+    "973230"
+  );
+});
+
+test("extracts Google G-prefixed codes (G-412157)", () => {
+  assert.equal(
+    extractOTP("G-412157 is your Google verification code."),
+    "412157"
+  );
+});
+
+test("extracts space-grouped codes like 823 815", () => {
+  assert.equal(
+    extractOTP("Your BuzzSumo verification code is 823 815"),
+    "823815"
+  );
+});
+
+test("extracts quoted codes after 'is'", () => {
+  assert.equal(
+    extractOTP('Your verification code is "521992"'),
+    "521992"
+  );
+  assert.equal(
+    extractOTP("Your code is (7744) — enter it now"),
+    "7744"
+  );
+});
+
+test("extracts confirmation code", () => {
+  assert.equal(
+    extractOTP("Your Twitter confirmation code is 180298"),
+    "180298"
+  );
+});
+
+test("extracts sign-in code", () => {
+  assert.equal(
+    extractOTP("Your sign-in code is 456789"),
+    "456789"
+  );
+});
+
+test("extracts Microsoft security code", () => {
+  assert.equal(
+    extractOTP("Use 5677 as Microsoft account security code"),
+    "5677"
+  );
+});
+
+test("prefilter accepts confirmation/sign-in/login/security keywords", () => {
+  assert.equal(looksLikeOTPEmail("Your confirmation code", "", ""), true);
+  assert.equal(looksLikeOTPEmail("Sign-in code", "", ""), true);
+  assert.equal(looksLikeOTPEmail("", "", "Your login code is 123456"), true);
+  assert.equal(looksLikeOTPEmail("", "", "Use 5677 as security code"), true);
+});
+
 test("prefilter accepts access-code emails even with generic subject lines", () => {
   const subject = "You've got a package.";
   const snippet = "";

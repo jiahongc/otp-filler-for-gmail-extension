@@ -12,21 +12,30 @@ function getClientId() {
 // Hyphenated codes (e.g. "123-456", "ABC-123") are captured with the hyphen
 // and stripped in extractOTP before returning.
 // Space is NOT used as a separator — too ambiguous in natural language sentences.
+// Shared keyword group used across patterns
+const KW = "code|otp|passcode|password|token|verify|verification|\\bpin\\b|2fa|two.?factor|confirmation|sign.?in|login|security|activation";
+const KW_PREFILTER = "password|one.?time|passcode|otp|\\bcode\\b|verify|2fa|two.?factor|\\bpin\\b|confirmation|sign.?in|login|security";
+
 const OTP_PATTERNS = [
   // keyword BEFORE contiguous code (e.g. "Your code: 761283", "PIN: 1234", "password: ABC123")
-  /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Za-z0-9]{4,10})\b/gi,
-  /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^\d]{0,5}(\d{4,8})\b/gi,
+  new RegExp(`(?:${KW})[^A-Za-z0-9]{0,5}([A-Za-z0-9]{4,10})\\b`, "gi"),
+  new RegExp(`(?:${KW})[^\\d]{0,5}(\\d{4,8})\\b`, "gi"),
   // keyword BEFORE hyphenated code (e.g. "code: 123-ABC", "PIN: 761-283")
-  /(?:code|otp|passcode|password|token|verify|verification|\bpin\b|2fa|two.?factor)[^A-Za-z0-9]{0,5}([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
-  // "is <code>" — contiguous or hyphenated (e.g. "Your code is 761283", "code is 123-ABC")
-  /\bis\s+((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,10})\b/gi,
-  /\bis\s+(\d{4,8})\b/gi,
+  new RegExp(`(?:${KW})[^A-Za-z0-9]{0,5}([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\\b`, "gi"),
+  // "is <code>" — contiguous or hyphenated, with optional quotes/parens
+  // (e.g. "code is 761283", 'code is "521992"', "code is (7744)")
+  /\bis\s+["'(]?((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,10})["')]?\b/gi,
+  /\bis\s+["'(]?(\d{4,8})["')]?\b/gi,
   /\bis\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // code BEFORE keyword within 80 chars (e.g. "761283\nPlease enter the above one-time password")
-  /\b(\d{4,8})\b(?=[^\d]{0,80}(?:password|one.?time|passcode|otp|\bcode\b|verify|2fa|two.?factor|\bpin\b))/gi,
-  /\b([A-Za-z0-9]{4,10})\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\bcode\b|verify|2fa|two.?factor|\bpin\b))/gi,
+  new RegExp(`\\b(\\d{4,8})\\b(?=[^\\d]{0,80}(?:${KW_PREFILTER}))`, "gi"),
+  new RegExp(`\\b([A-Za-z0-9]{4,10})\\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\\bcode\\b|verify|2fa|two.?factor|\\bpin\\b|confirmation|sign.?in))`, "gi"),
   // hyphenated code BEFORE keyword (e.g. "123-ABC — please use this one-time code")
-  /\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b(?=[^A-Z0-9]{0,80}(?:password|one.?time|passcode|otp|\bcode\b|verify|2fa|\bpin\b))/gi,
+  new RegExp(`\\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\\b(?=[^A-Z0-9]{0,80}(?:${KW_PREFILTER}))`, "gi"),
+  // keyword → wider gap → colon/equals → code (e.g. "password. Use it to log in: 973230")
+  new RegExp(`(?:${KW}).{1,50}[:=]\\s*([A-Za-z0-9]{4,10})\\b`, "gi"),
+  // Single-letter prefixed codes — capture digits only (e.g. Google "G-412157" → "412157")
+  /\b[A-Z]-(\d{4,8})\b/gi,
 ];
 
 const OTP_STOPWORDS = new Set([
@@ -236,6 +245,10 @@ function extractOTP(text) {
   // "3 2 9 8 5 5" after tag-stripping, which no OTP pattern can match.
   text = text.replace(/\b(\d\s+){3,}\d\b/g, (m) => m.replace(/\s+/g, ""));
 
+  // Collapse grouped-digit codes like "823 815" or "123 456" (two 3-digit groups
+  // separated by a space) into contiguous 6-digit codes.
+  text = text.replace(/\b(\d{3})\s+(\d{3})\b/g, "$1$2");
+
   let best = null;
 
   for (const [patternIndex, pattern] of OTP_PATTERNS.entries()) {
@@ -255,7 +268,7 @@ function extractOTP(text) {
 }
 
 function looksLikeOTPEmail(subject, snippet, body = "") {
-  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor|access/i.test(
+  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor|access|confirmation|sign.?in|login.?code|security.?code|activation/i.test(
     `${subject} ${snippet} ${body}`
   );
 }

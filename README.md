@@ -85,8 +85,9 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 ### OTP detection
 
 - Scans the last 10 emails from the past 10 minutes (across all added accounts)
-- Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`
-- Extracts 4-10 character codes (numeric, alphanumeric, and hyphenated) anchored to keywords
+- Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`, `confirmation`, `sign-in`, `login`, `security`, `activation`
+- Extracts 4-10 character codes (numeric, alphanumeric, hyphenated, and letter-prefixed like Google's `G-123456`) anchored to keywords
+- Handles space-grouped codes (`823 815`), quoted codes (`"521992"`), and codes separated from keywords by natural language (e.g. "password. Use it to log in: 973230")
 
 ### Field detection
 
@@ -109,9 +110,16 @@ After filling the code, the extension looks for nearby submit/verify/confirm but
 
 The extension **never sends** your emails or tokens to any external server. All processing happens locally.
 
-## Privacy
+## Security & Privacy
 
-See [Privacy Policy](privacy-policy.md).
+- **Local-only processing** — All email fetching, OTP extraction, and form filling happens entirely on your device. No data is sent to any external server.
+- **Minimal permissions** — The extension requests only `gmail.readonly` (no send/modify access) and injects content scripts on-demand, not on every page.
+- **Short-lived tokens** — OAuth2 access tokens expire after 1 hour and are refreshed silently. Tokens are stored in Chrome's extension-isolated `chrome.storage.local`, which is encrypted at rest by the OS on macOS (Keychain), Windows (DPAPI), and ChromeOS.
+- **Extension isolation** — Chrome enforces strict storage isolation between extensions. No other extension or webpage can access your stored tokens.
+- **No background activity** — The extension only scans Gmail when you open the popup. There is no persistent background polling or data collection.
+- **Open source** — All code is in this repo. There is no minified or obfuscated code.
+
+See the full [Privacy Policy](privacy-policy.md).
 
 ## Other Chromium browsers
 
