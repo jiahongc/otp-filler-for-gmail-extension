@@ -8,6 +8,8 @@ Chrome extension that automatically extracts verification codes from your Gmail 
 
 - **Multi-account** — Add multiple Gmail accounts and switch between them
 - **Auto-detect OTPs** — Scans recent emails for numeric, alphanumeric, and hyphenated verification codes
+- **Sign-in links** — Emails that log you in with a link instead of a code get an **Open** button (opens only when you click)
+- **Sender check** — Every card shows the sender's email and a Verified / Check / Blocked badge based on Gmail's own sender authentication
 - **Auto-copy** — Copies the latest code to your clipboard when you open the popup
 - **Auto-fill & submit** — Fills the code into the page's OTP field and clicks the submit button
 - **Smart detection** — Finds OTP input fields using W3C standards, name/placeholder heuristics, and nearby label text
@@ -71,14 +73,16 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 3. Add more accounts with the **+** button in the header
 4. When a verification email arrives, click the extension icon — codes appear automatically
 5. Click a code card to copy it, or click **Fill & Submit** to auto-fill the page
+6. For sign-in link emails, click **Open sign-in link** on the card
+7. Check the badge under the sender's email before using a code or link (see [Sender check](#sender-check))
 
 ## How it works
 
 | Component | Role |
 |-----------|------|
-| `background.js` | Service worker — manages multi-account OAuth, fetches recent emails via Gmail API, extracts OTP codes |
+| `background.js` | Service worker — manages multi-account OAuth, fetches recent emails via Gmail API, extracts OTP codes and sign-in links, scores sender trust |
 | `content.js` | Injected on-demand into the active tab — detects OTP input fields, fills values, and auto-clicks submit buttons |
-| `popup.html/js/css` | Extension popup — account management, code display, copy/fill actions |
+| `popup.html/js/css` | Extension popup — account management, code and sign-in link cards, sender badges, copy/fill/open actions |
 
 ### OTP detection
 
@@ -86,6 +90,24 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 - Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`, `confirmation`, `sign-in`, `login`, `security`, `activation`
 - Extracts 4-10 character codes (numeric, alphanumeric, hyphenated, and letter-prefixed like Google's `G-123456`) anchored to keywords
 - Handles space-grouped codes (`823 815`), quoted codes (`"521992"`), and codes separated from keywords by natural language (e.g. "password. Use it to log in: 973230")
+
+### Sign-in links
+
+- Used only when an email has no code
+- The subject must read like a sign-in request (`sign in`, `log in`, `magic link`, `verify your`, `confirm your`) **and** the link text must say so (`Sign in`, `Log in`, `Verify`, `Confirm`)
+- Only absolute `http(s)` links are considered; the card shows the destination host before you open it
+
+### Sender check
+
+Each card gets a badge from Gmail's own `Authentication-Results` header (added by `mx.google.com`) plus the link and display name:
+
+| Badge | Meaning | Card |
+|-------|---------|------|
+| ✓ Verified | DMARC or DKIM passed for the sender's domain, the display name fits that domain, and any link stays on it | Usable |
+| ⚠ Check | Authenticated, but the display name doesn't match the domain (brand impersonation) or the link goes to another domain (e.g. a tracking redirect) | Usable, with warning |
+| ✕ Blocked | Gmail couldn't authenticate the sender, or the link is not HTTPS, a bare IP, or a look-alike (`xn--`) domain | Can't copy, fill, or open |
+
+A scammer who owns their own domain can still pass Gmail's check, so always read the sender email shown on the card. Domain matching is heuristic (last two labels, or three under suffixes like `co.jp`).
 
 ### Field detection
 
@@ -114,6 +136,7 @@ The extension talks directly to Google for OAuth and Gmail access. OTP extractio
 - **Minimal permissions** — The extension requests only `gmail.readonly` (no send/modify access) and injects content scripts on-demand, not on every page.
 - **Short-lived tokens, never on disk** — OAuth2 access tokens expire after 1 hour and are refreshed silently. Tokens are held only in `chrome.storage.session` (in-memory, cleared when the browser exits) and are revoked when you remove an account. Only account emails are persisted to `chrome.storage.local`.
 - **Extension isolation** — Chrome enforces strict storage isolation between extensions. No other extension or webpage can access your stored tokens.
+- **Links never auto-open** — Sign-in links open in a new tab only when you click **Open**; blocked senders can't be opened at all.
 - **No background activity** — The extension only scans Gmail when you open the popup. There is no persistent background polling or data collection.
 - **Open source** — All code is in this repo. There is no minified or obfuscated code.
 

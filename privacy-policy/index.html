@@ -26,7 +26,7 @@
 
   <h2>Data We Access</h2>
   <ul>
-    <li><strong>Gmail messages:</strong> The extension reads your most recent emails (last 10 minutes) via the Gmail API using read-only access. Email content is processed in-memory to find verification codes and is never stored or transmitted externally.</li>
+    <li><strong>Gmail messages:</strong> The extension reads your most recent emails (last 10 minutes) via the Gmail API using read-only access. Email content and headers (including Gmail's sender-authentication results) are processed in-memory to find verification codes, sign-in links, and to check the sender. Nothing is stored or transmitted externally. Sign-in links open only when you click them.</li>
     <li><strong>Email address and name:</strong> Used to display your linked accounts within the extension popup. Stored locally in your browser's extension storage.</li>
     <li><strong>OAuth access tokens:</strong> Used to authenticate with the Gmail API. Stored locally in your browser's extension storage and never shared.</li>
   </ul>

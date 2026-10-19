@@ -22,6 +22,8 @@ Stop switching tabs to copy verification codes. OTP Filler for Gmail reads your 
 - Fills codes directly into input fields on any website
 - Supports multiple Gmail accounts with easy switching
 - Auto-copies the most recent code to your clipboard
+- Sign-in link emails ("magic links") get a one-click Open button — links never open on their own
+- Sender check on every card: Verified, Check, or Blocked, based on Gmail's own sender authentication
 - Works with numeric codes, alphanumeric codes, and hyphenated codes (e.g. 123-456)
 - Scans emails from the last 10 minutes so you always get the freshest code
 - Clean, minimal popup UI
