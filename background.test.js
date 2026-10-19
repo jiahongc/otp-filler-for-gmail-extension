@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { extractOTP, looksLikeOTPEmail, stripHtml } = require("./background.js");
+const { extractOTP, looksLikeOTPEmail, stripHtml, findLoginLink, senderTrust } = require("./background.js");
 
 test("extracts the numeric code from Garmin-style email copy", () => {
   const text = `
@@ -164,6 +164,26 @@ test("does not extract a street number or copyright year from a footer", () => {
   );
 });
 
+test("extracts a hyphenated code after 'is:' (NVIDIA)", () => {
+  assert.equal(
+    extractOTP("NVIDIA Account Your verification code is: 341-598 This verification code will expire in 15 minutes."),
+    "341598"
+  );
+});
+
+test("prefers a short alphanumeric code over a year in a 'Code sent' date line", () => {
+  // Airalo: per-character boxes in the body, code intact in the snippet,
+  // plus a login-details table with "Code sent 12:18 UTC, 17 October 2026"
+  const text =
+    "Confirm your Airalo login To finish logging in, enter this code on the device you were logging in from: AB7K " +
+    "To finish logging in, enter this code on the device you were logging in from: A B 7 K " +
+    "The code expires in 15 minutes. Code sent 12:18 UTC, 17 October 2026 Code expires 12:33 UTC";
+  assert.equal(extractOTP(text), "AB7K");
+  assert.equal(extractOTP("Your code is X9QZ. Sent Oct 17, 2026"), "X9QZ");
+  // a real year-like code with no month before it still wins
+  assert.equal(extractOTP("The code is 2008. Do not share this code."), "2008");
+});
+
 test("prefilter accepts confirmation/sign-in/login/security keywords", () => {
   assert.equal(looksLikeOTPEmail("Your confirmation code", "", ""), true);
   assert.equal(looksLikeOTPEmail("Sign-in code", "", ""), true);
@@ -178,4 +198,81 @@ test("prefilter accepts access-code emails even with generic subject lines", () 
 
   assert.equal(looksLikeOTPEmail(subject, snippet, body), true);
   assert.equal(extractOTP(body), "414384");
+});
+
+test("finds the sign-in link in a magic-link email (Copilot Money)", () => {
+  const html = `<p>If you want to sign in with your account, click this link:</p>
+    <p><a href='https://auth.copilot.money/__/auth/action?apiKey=x&amp;mode=signIn&amp;oobCode=abc'>Sign in to Copilot Money</a></p>
+    <p><a href="https://copilot.money/privacy">Privacy</a></p>`;
+  assert.equal(
+    findLoginLink("Sign in to Copilot Money requested at 2026 October 03 01:28 UTC", html),
+    "https://auth.copilot.money/__/auth/action?apiKey=x&mode=signIn&oobCode=abc"
+  );
+});
+
+test("ignores sign-in links in emails that aren't sign-in requests", () => {
+  const html = `<a href="https://news.example.com/login">Sign in</a> to read more`;
+  assert.equal(findLoginLink("☕ Pepsi challenged", html), null);
+  assert.equal(findLoginLink("Sign in to Example", `<a href="https://example.com/help">Help center</a>`), null);
+});
+
+const GMAIL_PASS = (domain) =>
+  `mx.google.com; dkim=pass header.i=@${domain} header.s=s1; spf=pass smtp.mailfrom=bounce@${domain}; dmarc=pass (p=REJECT) header.from=${domain}`;
+
+test("trust: verified when Gmail authenticates the sender and the link stays on its domain", () => {
+  const t = senderTrust({
+    authResults: GMAIL_PASS("copilot.money"),
+    senderName: "Copilot Money",
+    senderEmail: "noreply@copilot.money",
+    link: "https://auth.copilot.money/__/auth/action?mode=signIn",
+  });
+  assert.equal(t.level, "verified");
+});
+
+test("trust: matches airline-style initials to the domain (Japan Airlines → jal.com)", () => {
+  const t = senderTrust({ authResults: GMAIL_PASS("jal.com"), senderName: "Japan Airlines", senderEmail: "jmb_confirmation@jal.com" });
+  assert.equal(t.level, "verified");
+});
+
+test("trust: warns when the display name impersonates a brand the domain doesn't match", () => {
+  // Real scam in the inbox: authenticated, but "Robinhood™" sent from a CRM domain
+  const t = senderTrust({
+    authResults: GMAIL_PASS("send.lcmsgsndr.org"),
+    senderName: "Robinhood™",
+    senderEmail: "564046-email+safeguard.rh@send.lcmsgsndr.org",
+  });
+  assert.equal(t.level, "check");
+});
+
+test("trust: warns when the link leaves the sender's domain", () => {
+  const t = senderTrust({
+    authResults: GMAIL_PASS("tappandride.com"),
+    senderName: "TAPP",
+    senderEmail: "donotreply@tappandride.com",
+    link: "https://u4892013.ct.sendgrid.net/ls/click?upn=abc",
+  });
+  assert.equal(t.level, "check");
+});
+
+test("trust: blocks when Gmail can't authenticate the sender", () => {
+  const failed = "mx.google.com; dkim=fail header.i=@paypal.com; spf=softfail; dmarc=fail (p=REJECT) header.from=paypal.com";
+  assert.equal(senderTrust({ authResults: failed, senderName: "PayPal", senderEmail: "service@paypal.com" }).level, "suspicious");
+  assert.equal(senderTrust({ authResults: "", senderName: "PayPal", senderEmail: "service@paypal.com" }).level, "suspicious");
+  // DKIM passes, but for a different domain than the From address
+  const otherDomain = "mx.google.com; dkim=pass header.i=@evil.com; spf=pass; dmarc=none header.from=paypal.com";
+  assert.equal(senderTrust({ authResults: otherDomain, senderName: "PayPal", senderEmail: "service@paypal.com" }).level, "suspicious");
+});
+
+test("trust: country-code suffixes like co.jp don't let one domain vouch for another", () => {
+  const jbus = { senderName: "", senderEmail: "japanbusonline@mail.j-bus.co.jp" };
+  assert.equal(senderTrust({ ...jbus, authResults: GMAIL_PASS("mail.j-bus.co.jp") }).level, "verified");
+  const spoof = "mx.google.com; dkim=pass header.i=@attacker.co.jp; spf=pass; dmarc=fail header.from=j-bus.co.jp";
+  assert.equal(senderTrust({ ...jbus, authResults: spoof }).level, "suspicious");
+});
+
+test("trust: blocks unsafe links even from an authenticated sender", () => {
+  const base = { authResults: GMAIL_PASS("example.com"), senderName: "Example", senderEmail: "no-reply@example.com" };
+  assert.equal(senderTrust({ ...base, link: "http://example.com/login" }).level, "suspicious");
+  assert.equal(senderTrust({ ...base, link: "https://192.168.1.4/login" }).level, "suspicious");
+  assert.equal(senderTrust({ ...base, link: "https://xn--exmple-cua.com/login" }).level, "suspicious");
 });

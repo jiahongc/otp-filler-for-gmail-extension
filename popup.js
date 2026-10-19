@@ -131,26 +131,50 @@ function renderCodes(codes, accounts, shouldAutoCopy = false) {
 
   codesList.hidden = false;
   const multiAccount = accounts.length > 1;
+  // Suspicious senders are shown (with the reason) but can't be copied, filled or opened
+  const isBlocked = (item) => item.trust?.level === "suspicious";
+  const firstCode = codes.find((c) => c.code && !isBlocked(c));
+  const TRUST_ICON = { verified: "✓", check: "⚠", suspicious: "✕" };
 
-  codes.forEach((item, i) => {
+  codes.forEach((item) => {
+    const blocked = isBlocked(item);
     const card = document.createElement("div");
-    card.className = "code-item" + (i === 0 ? " selected" : "");
+    card.className = "code-item" + (item === firstCode ? " selected" : "") + (blocked ? " blocked" : "");
 
     let accountLine = "";
     if (multiAccount) {
       accountLine = `<div class="code-item-account">via ${escHtml(item.accountEmail)}</div>`;
     }
+    const trustLine = item.trust
+      ? `<div class="code-item-trust trust-${item.trust.level}">${TRUST_ICON[item.trust.level]} ${
+          blocked ? "Blocked: " : ""}${escHtml(item.trust.reason)}</div>`
+      : "";
+    const main = item.code
+      ? `<div class="code-item-code">${escHtml(item.code)}</div>`
+      : `<button class="open-btn"${blocked ? " disabled" : ""}>Open sign-in link &rarr; ${escHtml(item.linkHost)}</button>`;
 
     card.innerHTML = `
       <div class="code-item-header">
         <span class="code-item-sender">${escHtml(item.senderName)}</span>
         <span class="code-item-time">${escHtml(timeAgo(item.timestamp))}</span>
-        <button class="copy-btn" title="Copy code">&#x29C9;</button>
+        ${item.code && !blocked ? `<button class="copy-btn" title="Copy code">&#x29C9;</button>` : ""}
       </div>
-      <div class="code-item-code">${escHtml(item.code)}</div>
+      ${main}
       <div class="code-item-email">${escHtml(item.senderEmail)}</div>
+      ${trustLine}
       ${accountLine}
     `;
+    codesList.appendChild(card);
+    if (blocked) return;
+
+    if (item.link) {
+      // Only ever opened by an explicit click — never automatically
+      card.querySelector(".open-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        chrome.tabs.create({ url: item.link });
+      });
+      return;
+    }
 
     card.addEventListener("click", () => {
       codesList.querySelectorAll(".code-item").forEach((el) => el.classList.remove("selected"));
@@ -174,13 +198,11 @@ function renderCodes(codes, accounts, shouldAutoCopy = false) {
       setStatus(`Copied ${item.code}`, "success");
       setTimeout(() => { btn.innerHTML = "&#x29C9;"; btn.classList.remove("copied"); }, 1500);
     });
-
-    codesList.appendChild(card);
   });
 
-  currentCode = codes[0].code;
-  fillBtn.disabled = false;
-  if (shouldAutoCopy) autoCopy(codes[0].code);
+  currentCode = firstCode?.code || null;
+  fillBtn.disabled = !currentCode;
+  if (shouldAutoCopy && currentCode) autoCopy(currentCode);
 }
 
 // ── Manage accounts ───────────────────────────────────────────────────────────
@@ -264,7 +286,7 @@ async function doFetch() {
     renderCodes(res.codes, cachedAccounts, true);
   } else {
     renderCodes([], cachedAccounts);
-    setStatus("No OTP codes found in the last 10 minutes.");
+    setStatus("No codes or sign-in links in the last 10 minutes.");
   }
 
   // Show account errors (e.g. expired tokens)

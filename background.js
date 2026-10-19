@@ -27,10 +27,10 @@ const OTP_PATTERNS = [
   // keyword BEFORE hyphenated code (e.g. "code: 123-ABC", "PIN: 761-283")
   new RegExp(`(?:${KW})[^A-Za-z0-9]{0,5}([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\\b`, "gi"),
   // "is <code>" — contiguous or hyphenated, with optional quotes/parens
-  // (e.g. "code is 761283", 'code is "521992"', "code is (7744)")
+  // (e.g. "code is 761283", 'code is "521992"', "code is (7744)", "code is: 341-598")
   /\bis\s+["'(]?((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,10})["')]?\b/gi,
   /\bis\s+["'(]?(\d{4,8})["')]?\b/gi,
-  /\bis\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
+  /\bis:?\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // code BEFORE keyword within 80 chars (e.g. "761283\nPlease enter the above one-time password")
   new RegExp(`\\b(\\d{4,8})\\b(?=[^\\d]{0,80}(?:${KW_PREFILTER}))`, "gi"),
   new RegExp(`\\b([A-Za-z0-9]{4,10})\\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\\bcode\\b|verify|2fa|two.?factor|\\bpin\\b|confirmation|sign.?in))`, "gi"),
@@ -255,6 +255,81 @@ function extractTextFromPayload(payload) {
   return texts.join(" ");
 }
 
+function extractHtmlFromPayload(payload) {
+  const parts = payload.parts || [payload];
+  const html = [];
+  for (const part of parts) {
+    if (part.mimeType === "text/html" && part.body?.data) html.push(decodeBase64(part.body.data));
+    if (part.parts) html.push(extractHtmlFromPayload(part));
+  }
+  return html.join(" ");
+}
+
+// ── Sign-in links & sender trust ──────────────────────────────────────────────
+
+// Magic-link emails: the subject must read like a sign-in request AND the
+// anchor text must say so — keeps "Sign in" links in newsletters out.
+const LOGIN_SUBJECT = /sign.?in|log.?in|magic link|verify your|confirm your/i;
+const LOGIN_ANCHOR = /sign.?in|log.?in|verify|confirm|magic link/i;
+
+function findLoginLink(subject, html) {
+  if (!LOGIN_SUBJECT.test(subject)) return null;
+  for (const [, href, text] of html.matchAll(/<a\b[^>]*?\bhref\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    if (LOGIN_ANCHOR.test(stripHtml(text))) return href.replace(/&amp;/gi, "&");
+  }
+  return null;
+}
+
+// ponytail: last two labels, or three under "co.jp"/"com.qa"-style country
+// suffixes; swap in the public-suffix list if an odd suffix ever matters.
+function baseDomain(host) {
+  const labels = host.toLowerCase().split(".");
+  const ccSuffix = labels.length > 2 && labels.at(-1).length === 2 &&
+    /^(?:co|com|net|org|gov|edu|ac|ne|or|go)$/.test(labels.at(-2));
+  return labels.slice(ccSuffix ? -3 : -2).join(".");
+}
+
+// Does the display name plausibly belong to the sending domain?
+// ("Copilot Money" → copilot.money, "Japan Airlines" → jal.com by initials)
+function nameMatchesDomain(name, domain) {
+  const words = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return true; // nothing comparable (e.g. non-Latin name)
+  const label = baseDomain(domain).split(".")[0].replace(/[^a-z0-9]/g, "");
+  if (words.some((w) => w.length >= 3 && label.includes(w))) return true;
+  if (words.join("").includes(label)) return true;
+  const initials = words.map((w) => w[0]).join("");
+  return initials.length >= 2 && label.startsWith(initials);
+}
+
+// Levels: "verified" (all checks pass), "check" (warn, still usable),
+// "suspicious" (blocked in the popup).
+function senderTrust({ authResults = "", senderName = "", senderEmail = "", link = null }) {
+  const fromDomain = (senderEmail.split("@")[1] || "").toLowerCase();
+  const fromBase = baseDomain(fromDomain);
+
+  // Gmail's verdict: DMARC pass for the From domain, or a passing DKIM signature from it
+  const dmarcFrom = authResults.match(/dmarc=pass\b[^;]*header\.from=([\w.-]+)/i)?.[1];
+  const dkimDomains = [...authResults.matchAll(/dkim=pass\b[^;]*header\.i=[^@\s;]*@([\w.-]+)/gi)].map((m) => m[1]);
+  if (!fromDomain || ![dmarcFrom, ...dkimDomains].some((d) => d && baseDomain(d) === fromBase)) {
+    return { level: "suspicious", reason: "Gmail couldn't verify this sender" };
+  }
+
+  let linkHost = null;
+  if (link) {
+    try { linkHost = new URL(link).hostname; } catch { return { level: "suspicious", reason: "Unreadable link" }; }
+    if (!link.startsWith("https://") || /^[\d.]+$|^\[/.test(linkHost) || linkHost.includes("xn--")) {
+      return { level: "suspicious", reason: `Unsafe link (${linkHost})` };
+    }
+  }
+  if (!nameMatchesDomain(senderName, fromDomain)) {
+    return { level: "check", reason: `"${senderName}" doesn't match ${fromBase}` };
+  }
+  if (linkHost && baseDomain(linkHost) !== fromBase) {
+    return { level: "check", reason: `Link goes to ${linkHost}` };
+  }
+  return { level: "verified", reason: `Verified ${fromBase}` };
+}
+
 function normalizeOTP(candidate) {
   return candidate?.replace(/[-\s]/g, "").trim() || "";
 }
@@ -305,6 +380,11 @@ function looksLikeJunkNumberContext(before, candidate, after) {
       (/(?:©|\(c\)|copyright)\s*$/i.test(before) ||
        /^\s+[A-Z][\w.&' -]*\b(?:Inc|LLC|Ltd|Corp|GmbH|Co|Company)\b/.test(after) ||
        /^[\s,]*all rights reserved/i.test(after))) {
+    return true;
+  }
+  // Date year: "17 October 2026" / "Oct 17, 2026" (e.g. a "Code sent" line)
+  if (/^(?:19|20)\d{2}$/.test(candidate) &&
+      /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?$/i.test(before)) {
     return true;
   }
   return false;
@@ -379,20 +459,30 @@ async function fetchOTPsForAccount(token, accountEmail) {
       const msg = await gmailFetch(`/users/me/messages/${id}?format=full`, token);
       const subject = msg.payload.headers?.find((h) => h.name === "Subject")?.value || "";
       const from = msg.payload.headers?.find((h) => h.name === "From")?.value || "";
+      // ponytail: Gmail adds its own verdict as the topmost mx.google.com
+      // Authentication-Results header; later ones may be sender-forged.
+      const authResults = msg.payload.headers?.find(
+        (h) => h.name === "Authentication-Results" && /^\s*mx\.google\.com/i.test(h.value)
+      )?.value || "";
       const body = extractTextFromPayload(msg.payload);
       const snippet = msg.snippet || "";
 
-      if (!looksLikeOTPEmail(subject, snippet, body)) return null;
-      const otp = extractOTP(subject + " " + snippet + " " + body);
-      if (!otp) return null;
+      const otp = looksLikeOTPEmail(subject, snippet, body)
+        ? extractOTP(subject + " " + snippet + " " + body)
+        : null;
+      const link = otp ? null : findLoginLink(subject, extractHtmlFromPayload(msg.payload));
+      if (!otp && !link) return null;
 
       const { name, email } = parseSender(from);
       return {
         code: otp,
+        link,
+        linkHost: link ? new URL(link).hostname : null,
         senderName: name,
         senderEmail: email,
         accountEmail,
         timestamp: parseInt(msg.internalDate, 10),
+        trust: senderTrust({ authResults, senderName: name, senderEmail: email, link }),
       };
     })
   );
@@ -486,7 +576,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 if (typeof module !== "undefined") {
   module.exports = {
     extractOTP,
+    findLoginLink,
     looksLikeOTPEmail,
+    senderTrust,
     normalizeOTP,
     scoreOTPCandidate,
     stripHtml,
