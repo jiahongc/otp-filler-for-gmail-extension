@@ -240,7 +240,7 @@ function stripHtml(html) {
     .replace(/&\w+;/g, " ")
     // Strip zero-width / invisible Unicode chars used by emails to poison snippets
     // and break OTP digit sequences (e.g. 0͏5͏6͏9͏3͏0 → 056930)
-    .replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "")
+    .replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202E\uFEFF]/g, "")
     .replace(/\s+/g, " ").trim();
 }
 
@@ -397,7 +397,7 @@ function looksLikeJunkNumberContext(before, candidate, after) {
 function extractOTP(text) {
   // Strip zero-width / invisible Unicode chars that emails inject between digits
   // to poison scrapers (e.g. 0͏5͏6͏9͏3͏0 renders as "056930" but breaks \d+ regex).
-  text = text.replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202F\uFEFF]/g, "");
+  text = text.replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202E\uFEFF]/g, "");
 
   // Collapse sequences of 4+ space-separated single digits back into contiguous
   // numbers. HTML emails that style each digit in its own <span>/<td> produce

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2
+
+- Fix: times like Google's "11:21 AM" (written with a narrow no-break space) are no longer read as a code ("21AM"). That space was being deleted along with invisible characters, gluing "21" to "AM".
+
 ## 1.3.1
 
 - Fix: promo, discount, coupon, voucher, referral, and offer codes in marketing emails (e.g. "use promo code THRIFTY") are no longer shown as OTPs.

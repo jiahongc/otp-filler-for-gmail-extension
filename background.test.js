@@ -164,6 +164,12 @@ test("does not extract a street number or copyright year from a footer", () => {
   );
 });
 
+test("keeps narrow no-break spaces as spaces (Google's '11:21 AM')", () => {
+  const text = "you used Sign in with Google to sign in to Shopify on October 20 at 11:21 AM. This email summarizes";
+  assert.equal(extractOTP(text), null);
+  assert.equal(extractOTP(stripHtml(`<p>${text}</p>`)), null);
+});
+
 test("ignores promo, discount, and coupon codes in marketing emails", () => {
   // Thrifty Traveler newsletter ad
   assert.equal(extractOTP("Get your tickets - use promo code THRIFTY for $10 off! Already a member? Log in to see all your deals"), null);
