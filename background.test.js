@@ -164,6 +164,15 @@ test("does not extract a street number or copyright year from a footer", () => {
   );
 });
 
+test("ignores promo, discount, and coupon codes in marketing emails", () => {
+  // Thrifty Traveler newsletter ad
+  assert.equal(extractOTP("Get your tickets - use promo code THRIFTY for $10 off! Already a member? Log in to see all your deals"), null);
+  assert.equal(extractOTP("Use discount code SAVE20 at checkout"), null);
+  assert.equal(extractOTP("Your coupon code: WELCOME10"), null);
+  // a real OTP in the same email still wins
+  assert.equal(extractOTP("Your verification code is 482915. Use promo code FALL25 for 10% off."), "482915");
+});
+
 test("extracts a hyphenated code after 'is:' (NVIDIA)", () => {
   assert.equal(
     extractOTP("NVIDIA Account Your verification code is: 341-598 This verification code will expire in 15 minutes."),

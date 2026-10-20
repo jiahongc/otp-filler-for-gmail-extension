@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- Fix: promo, discount, coupon, voucher, referral, and offer codes in marketing emails (e.g. "use promo code THRIFTY") are no longer shown as OTPs.
+
 ## 1.3.0
 
 - **Sign-in links:** emails that sign you in with a link instead of a code (e.g. Copilot Money) now show a card with the link's destination and an **Open** button. Links open only when you click.

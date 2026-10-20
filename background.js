@@ -367,6 +367,10 @@ function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
 // Keyword-proximity patterns otherwise grab these because legal/footer text is
 // full of words like "security", "sign-in", and "account".
 function looksLikeJunkNumberContext(before, candidate, after) {
+  // Marketing codes: "use promo code THRIFTY", "coupon code: WELCOME10"
+  if (/\b(?:promo(?:tional)?|discount|coupon|voucher|referral|offer)\s+code\W{0,3}$/i.test(before)) {
+    return true;
+  }
   // Postal code: "<City>, ST 94043, USA"
   if (/[A-Za-z]{2}[.,]?\s*$/.test(before) && /^\s*,?\s*(?:USA|US|United States|U\.S\.A?\.?)\b/i.test(after)) {
     return true;

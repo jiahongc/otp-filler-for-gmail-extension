@@ -89,6 +89,7 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 - Scans the last 10 emails from the past 10 minutes (across all added accounts)
 - Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`, `confirmation`, `sign-in`, `login`, `security`, `activation`
 - Extracts 4-10 character codes (numeric, alphanumeric, hyphenated, and letter-prefixed like Google's `G-123456`) anchored to keywords
+- Ignores marketing codes (`promo code`, `discount code`, `coupon code`, …) and years in dates or copyright footers
 - Handles space-grouped codes (`823 815`), quoted codes (`"521992"`), and codes separated from keywords by natural language (e.g. "password. Use it to log in: 973230")
 
 ### Sign-in links
