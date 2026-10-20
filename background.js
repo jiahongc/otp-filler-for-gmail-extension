@@ -13,12 +13,12 @@ function getClientId() {
 // and stripped in extractOTP before returning.
 // Space is NOT used as a separator — too ambiguous in natural language sentences.
 // Shared keyword group used across patterns
-const KW = "code|otp|passcode|password|token|verify|verification|\\bpin\\b|2fa|two.?factor|confirmation|sign.?in|login|security|activation";
-const KW_PREFILTER = "password|one.?time|passcode|otp|\\bcode\\b|verify|2fa|two.?factor|\\bpin\\b|confirmation|sign.?in|login|security";
+const KW = "\\bcode\\b|otp|passcode|password|token|verify|verification|\\bpin\\b|\\b2fa\\b|two.?factor|confirmation|sign.?in|login|security|activation";
+const KW_PREFILTER = "password|one.?time|passcode|otp|\\bcode\\b|verify|\\b2fa\\b|two.?factor|\\bpin\\b|confirmation|sign.?in|login|security";
 // Strong, unambiguous code words — used for the wider-gap pattern below where a
 // keyword can sit a full sentence away from the code, so the keyword set must be
 // specific enough not to drag in random numbers.
-const KW_STRONG = "verification|passcode|one.?time|\\botp\\b|2fa|two.?factor|security.?code|login.?code|access.?code|\\bcode\\b";
+const KW_STRONG = "verification|passcode|one.?time|\\botp\\b|\\b2fa\\b|two.?factor|security.?code|login.?code|access.?code|\\bcode\\b";
 
 const OTP_PATTERNS = [
   // keyword BEFORE contiguous code (e.g. "Your code: 761283", "PIN: 1234", "password: ABC123")
@@ -33,7 +33,7 @@ const OTP_PATTERNS = [
   /\bis:?\s+([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\b/gi,
   // code BEFORE keyword within 80 chars (e.g. "761283\nPlease enter the above one-time password")
   new RegExp(`\\b(\\d{4,8})\\b(?=[^\\d]{0,80}(?:${KW_PREFILTER}))`, "gi"),
-  new RegExp(`\\b([A-Za-z0-9]{4,10})\\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\\bcode\\b|verify|2fa|two.?factor|\\bpin\\b|confirmation|sign.?in))`, "gi"),
+  new RegExp(`\\b([A-Za-z0-9]{4,10})\\b(?=[^A-Za-z0-9]{0,80}(?:one.?time|passcode|otp|\\bcode\\b|verify|\\b2fa\\b|two.?factor|\\bpin\\b|confirmation|sign.?in))`, "gi"),
   // hyphenated code BEFORE keyword (e.g. "123-ABC — please use this one-time code")
   new RegExp(`\\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6})\\b(?=[^A-Z0-9]{0,80}(?:${KW_PREFILTER}))`, "gi"),
   // keyword → wider gap → colon/equals → code (e.g. "password. Use it to log in: 973230")
@@ -47,6 +47,10 @@ const OTP_PATTERNS = [
   // (e.g. Disney's "Use this passcode to verify ... It will expire ... 123456").
   // Keep this broader window limited to the explicit "passcode" term.
   /\bpasscode\b[^\n]{0,120}?\b(\d{4,8})\b/gi,
+  // Same wide window after an explicit "<kind> code" heading, but only for
+  // exactly 6 digits (e.g. Wally's "Your login code Enter this code to sign in.
+  // It expires ... can only be used once. 957981").
+  /\b(?:login|sign.?in|verification|security|one.?time)\s+code\b[^\n]{0,120}?\b(\d{6})\b/gi,
   // Single-letter prefixed codes — capture digits only (e.g. Google "G-412157" → "412157")
   /\b[A-Z]-(\d{4,8})\b/gi,
 ];
@@ -269,7 +273,7 @@ function extractHtmlFromPayload(payload) {
 
 // Magic-link emails: the subject must read like a sign-in request AND the
 // anchor text must say so — keeps "Sign in" links in newsletters out.
-const LOGIN_SUBJECT = /sign.?in|log.?in|magic link|verify your|confirm your/i;
+const LOGIN_SUBJECT = /sign.?in|log.?in|magic link|(?:verify|confirm) your (?:email|account|login|sign)/i;
 const LOGIN_ANCHOR = /sign.?in|log.?in|verify|confirm|magic link/i;
 
 function findLoginLink(subject, html) {
@@ -367,12 +371,33 @@ function scoreOTPCandidate(candidate, patternIndex, matchIndex) {
 // Keyword-proximity patterns otherwise grab these because legal/footer text is
 // full of words like "security", "sign-in", and "account".
 function looksLikeJunkNumberContext(before, candidate, after) {
-  // Marketing codes: "use promo code THRIFTY", "coupon code: WELCOME10"
-  if (/\b(?:promo(?:tional)?|discount|coupon|voucher|referral|offer)\s+code\W{0,3}$/i.test(before)) {
+  // Labels for values that aren't sign-in codes: marketing ("promo code THRIFTY",
+  // "GIFT CODE CREDIT-USA"), payments ("Authorization Code: 120149"), addresses
+  // ("Mail Code: 180WVB"), and IDs ("account number is …", "Confirmation #…")
+  if (/\b(?:(?:promo(?:tional)?|discount|coupon|voucher|referral|offer|gift|authori[sz]ation|approval|mail|zip|postal)\s*code|(?:account|order|reservation|confirmation|booking|member(?:ship)?|tracking|reference|invoice|policy)\s*(?:number|no\.?|#|id))\W{0,3}(?:is\s+)?$/i.test(before)) {
     return true;
   }
-  // Postal code: "<City>, ST 94043, USA"
-  if (/[A-Za-z]{2}[.,]?\s*$/.test(before) && /^\s*,?\s*(?:USA|US|United States|U\.S\.A?\.?)\b/i.test(after)) {
+  // The label itself, not the code: "GIFT CODE", "ACCESS CODE"
+  if (/^[A-Za-z]+$/.test(candidate) && /^\s*code\b/i.test(after)) {
+    return true;
+  }
+  // Marketing tails: "Use code BREW for 15% off", "code TPG200 to receive …"
+  if (/^\W{0,3}(?:for\s+[$€£]?\d+\s*(?:%|off|percent)|for\s+[$€£]\d|to\s+(?:receive|get|save|earn)\b|at\s+checkout|through\s|and\s+(?:get|save)\b)/i.test(after)) {
+    return true;
+  }
+  // Part of a longer number: order/phone segments ("111-4324106-4739435",
+  // "332-287-1719"), decimals ("129.3450"), thousands ("28,340")
+  if (/\d[-.,/]$/.test(before) || /^[-.,/]\d/.test(after)) {
+    return true;
+  }
+  // Masked card/account numbers ("***2042", "XXXXX2409", "ending in 2004") and amounts
+  if (/(?:[X*•]{2,}|ending in\s*|[$€£¥]\s*)$/i.test(before) || /^X{3,}/i.test(candidate) ||
+      /^\s*(?:yen|jpy|usd|eur|gbp|dollars?)\b/i.test(after)) {
+    return true;
+  }
+  // Postal code: "<City>, ST 94043, USA" or "New York, NY 10285"
+  if ((/[A-Za-z]{2}[.,]?\s*$/.test(before) && /^\s*,?\s*(?:USA|US|United States|U\.S\.A?\.?)\b/i.test(after)) ||
+      (/^\d{5}$/.test(candidate) && /,\s*[A-Z]{2}\s*$/.test(before))) {
     return true;
   }
   // Street number: "1600 Amphitheatre Parkway"
@@ -384,6 +409,10 @@ function looksLikeJunkNumberContext(before, candidate, after) {
       (/(?:©|\(c\)|copyright)\s*$/i.test(before) ||
        /^\s+[A-Z][\w.&' -]*\b(?:Inc|LLC|Ltd|Corp|GmbH|Co|Company)\b/.test(after) ||
        /^[\s,]*all rights reserved/i.test(after))) {
+    return true;
+  }
+  // Date after a month: "Nov-06-2026", "Oct 06"
+  if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[-/ ]$/i.test(before) && /^\d/.test(candidate)) {
     return true;
   }
   // Date year: "17 October 2026" / "Oct 17, 2026" (e.g. a "Code sent" line)
@@ -398,6 +427,10 @@ function extractOTP(text) {
   // Strip zero-width / invisible Unicode chars that emails inject between digits
   // to poison scrapers (e.g. 0͏5͏6͏9͏3͏0 renders as "056930" but breaks \d+ regex).
   text = text.replace(/[\u00AD\u034F\u200B-\u200F\u2028-\u202E\uFEFF]/g, "");
+
+  // Drop URLs: plain-text parts carry raw links whose query strings look like
+  // codes ("&code=258935", "referralCode=…") or keywords ("%2FA…" → "2fa").
+  text = text.replace(/https?:\/\/[^\s<>()"']+/gi, " ");
 
   // Collapse sequences of 4+ space-separated single digits back into contiguous
   // numbers. HTML emails that style each digit in its own <span>/<td> produce
@@ -436,7 +469,7 @@ function extractOTP(text) {
 }
 
 function looksLikeOTPEmail(subject, snippet, body = "") {
-  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|2fa|two.?factor|access|confirmation|sign.?in|login.?code|security.?code|activation/i.test(
+  return /verification|verify|\bcode\b|otp|one.?time|passcode|\bpin\b|\b2fa\b|two.?factor|access|confirmation|sign.?in|login.?code|security.?code|activation/i.test(
     `${subject} ${snippet} ${body}`
   );
 }

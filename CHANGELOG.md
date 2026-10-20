@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.3
+
+Fixes from an audit of every email in the inbox from Oct 6–20, 2026 (481 messages): all 34 false positives found are gone, and every real code is still found.
+
+- Ignore URLs in plain-text email parts: link query strings were read as codes (Google "Sign in with Google" notices, Going, Kalshi, Experian, Capital One, Amazon).
+- `2fa` and `code` now match only as whole words, so `%2FA…` and `referralCode=` no longer count.
+- Ignore digits that are part of a longer number: order numbers, phone numbers, decimals, and thousands (Amazon, Fidelity, Wally).
+- Ignore marketing and ID values: "use code X for 15% off", gift, authorization, and mail codes, account/order/confirmation numbers, masked cards (`***2042`, `XXXXX2409`), and amounts (`28340 Yen`).
+- Ignore ZIP codes without a country (`New York, NY 10285`) and dates like `Nov-06-2026`.
+- Find codes placed a sentence or two after a "login code" heading (Wally).
+- Sign-in links need a sign-in subject; appointment "Confirm your…" emails no longer get a link card.
+
 ## 1.3.2
 
 - Fix: times like Google's "11:21 AM" (written with a narrow no-break space) are no longer read as a code ("21AM"). That space was being deleted along with invisible characters, gluing "21" to "AM".

@@ -89,13 +89,13 @@ Go to `chrome://extensions` and click the refresh icon on the extension card.
 - Scans the last 10 emails from the past 10 minutes (across all added accounts)
 - Filters by subject/snippet keywords: `code`, `OTP`, `verification`, `passcode`, `PIN`, `confirmation`, `sign-in`, `login`, `security`, `activation`
 - Extracts 4-10 character codes (numeric, alphanumeric, hyphenated, and letter-prefixed like Google's `G-123456`) anchored to keywords
-- Ignores marketing codes (`promo code`, `discount code`, `coupon code`, …) and years in dates or copyright footers
+- Ignores values that aren't sign-in codes: marketing codes (`promo code`, `use code X for 15% off`, gift codes), order/account/confirmation numbers, masked cards, prices, phone numbers, ZIP codes, dates, and anything inside a URL
 - Handles space-grouped codes (`823 815`), quoted codes (`"521992"`), and codes separated from keywords by natural language (e.g. "password. Use it to log in: 973230")
 
 ### Sign-in links
 
 - Used only when an email has no code
-- The subject must read like a sign-in request (`sign in`, `log in`, `magic link`, `verify your`, `confirm your`) **and** the link text must say so (`Sign in`, `Log in`, `Verify`, `Confirm`)
+- The subject must read like a sign-in request (`sign in`, `log in`, `magic link`, `verify/confirm your email|account`) **and** the link text must say so (`Sign in`, `Log in`, `Verify`, `Confirm`)
 - Only absolute `http(s)` links are considered; the card shows the destination host before you open it
 
 ### Sender check

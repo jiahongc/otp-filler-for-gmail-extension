@@ -291,3 +291,53 @@ test("trust: blocks unsafe links even from an authenticated sender", () => {
   assert.equal(senderTrust({ ...base, link: "https://192.168.1.4/login" }).level, "suspicious");
   assert.equal(senderTrust({ ...base, link: "https://xn--exmple-cua.com/login" }).level, "suspicious");
 });
+
+// ── Inbox audit (Oct 6–20, 2026) regressions ─────────────────────────────────
+
+test("ignores codes and keywords inside URLs in plain-text parts", () => {
+  assert.equal(extractOTP("You shared some Google Account data with Shopify https://accounts.google.com/x?continue=https%3A%2F%2Fmyaccount.google.com%2Flinkedapps%2Foverview%2FAREUMUVi80"), null);
+  assert.equal(extractOTP("Reset Your Kalshi Password Reset password ( https://kalshi.com/reset-password?user=a1&code=258935 )"), null);
+  assert.equal(extractOTP("Copenhagen $510 https://going.com/deal?lid=5pvu60w4exvv&referralCode=s3s85ybq"), null);
+  assert.equal(extractOTP("You have a credit https://c1.com/u?messageTypeCode=SLRACR&errorTemplateId=1022)"), null);
+});
+
+test("ignores digits that are part of a longer number", () => {
+  assert.equal(extractOTP("Order # 111-4324106-4739435 Reason for return: Not as Expected Return code Download QR Code"), null);
+  assert.equal(extractOTP("ETF 129.3450 Full details View trade confirmation"), null);
+  // Wally: phone numbers after the code, and the code ~70 chars after "Enter this code"
+  assert.equal(
+    extractOTP("Wally login code Your login code Enter this code to sign in. It expires in 10 minutes and can only be used once. 482915 CONTACT US Text: 833-929-2559 Call: 332-287-1719 Terms &amp; Conditions Privacy"),
+    "482915"
+  );
+});
+
+test("ignores ZIP codes in address footers without a country", () => {
+  assert.equal(extractOTP("200 Vesey Street, New York, NY 10285. If you have questions or to verify the authenticity"), null);
+});
+
+test("ignores marketing, payment, and account-number values", () => {
+  for (const text of [
+    "Use code BREW for 15% off your first order",
+    "Use code TPG200 to receive 200 bonus entries when you donate $15",
+    "new members who register with code GET15K through Oct. 31",
+    "APPLE GIFT CODE CREDIT-USA Your gift card details",
+    "Amex ending in 2004 | Authorization Code: 120149",
+    "Verizon, One Verizon Way, Mail Code: 180WVB, Basking Ridge",
+    "Request for New Ameren Utility Service Your new account number is 2923130068.",
+    "Mastercard ***2042 PendingConfirmation 000186339544",
+    "Your trade confirmation is available online Account: XXXXX2409",
+    "Reservation Confirmation Total is 28340 Yen. -Details Reservation number: 2001",
+    "Your Nov-06-2026 Confirmation #3115210041",
+  ]) assert.equal(extractOTP(text), null, text);
+  // a real code with similar phrasing still comes through
+  assert.equal(extractOTP("Use code 482915 to sign in to your account"), "482915");
+});
+
+test("sign-in links need a sign-in subject, not any 'confirm your'", () => {
+  const html = `<a href="https://x.carestack.net/c">Confirm Your Appointment</a>`;
+  assert.equal(findLoginLink("Jiahong, Please Confirm Your Upcoming Appointment", html), null);
+  assert.equal(
+    findLoginLink("Confirm your email address", `<a href="https://app.example.com/verify?t=1">Confirm email</a>`),
+    "https://app.example.com/verify?t=1"
+  );
+});
